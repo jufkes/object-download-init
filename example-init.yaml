@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: object-init
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: object-storage-information
+  namespace: object-init
+data:
+  host:
+  bucket:
+  destination:
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: object-storage-keys
+  namespace: object-init
+type: Opaque
+data:
+  access_key:
+  secret_key:
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: object-init
+  namespace: object-init
+spec:
+  accessModes:
+    - ReadWriteOnce
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: rook-ceph-block
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: object-init
+  namespace: object-init
+  labels:
+    app: demobox
+spec:
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: ubuntu
+        image: ubuntu
+        command:
+          - sleep
+          - "500"
+        volumeMounts:
+        - mountPath: /data
+          name: allthethings
+      initContainers:
+      - name: object-download
+        image: portr.ctnr.ctl.io/pocs/object-downloader:latest
+        command:
+          - python
+          - "/object-downloader.py"
+        env:
+          - name: ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: object-storage-keys
+                key: access_key
+          - name: SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: object-storage-keys
+                key: secret_key
+          - name: OBJECTHOST
+            valueFrom:
+              configMapKeyRef:
+                name: object-storage-information
+                key: host
+          - name: BUCKET
+            valueFrom:
+              configMapKeyRef:
+                name: object-storage-information
+                key: bucket
+          - name: HOST_DESTINATION
+            valueFrom:
+              configMapKeyRef:
+                name: object-storage-information
+                key: destination
+        volumeMounts:
+        - mountPath: /data
+          name: allthethings
+      volumes:
+      - name: allthethings
+        persistentVolumeClaim:
+          claimName: object-init
